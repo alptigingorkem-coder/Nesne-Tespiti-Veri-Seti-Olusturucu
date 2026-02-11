@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+myenv/
+venv/
+.env
+
+# Videolar ve Data
+videos/
+sabit_kanatli_iha_dataset*/
+final_dataset/
+manuel_ayiklama/
+logs/
+
+# Model Dosyaları
+*.pt
+*.onnx
+
+# Windows
+Thumbs.db
