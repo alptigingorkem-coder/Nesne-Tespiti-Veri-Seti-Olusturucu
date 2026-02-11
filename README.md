@@ -1,16 +1,24 @@
-# 🚁 Sabit Kanatlı İHA Veri Seti Oluşturucu (Fixed Wing UAV Dataset Generator)
+# 🎥 AI Destekli Nesne Tespiti Veri Seti Oluşturucu (AI-Powered Object Detection Dataset Generator)
 
-Bu proje, açık kaynak videolardan (YouTube vb.) otomatik olarak **Sabit Kanatlı İHA** görüntüleri toplamak, filtrelemek ve etiketlemeye hazır hale getirmek için geliştirilmiştir.
+**Herhangi bir video kaynağından, belirttiğiniz nesneleri otomatik olarak tespit edip yüksek kaliteli bir eğitim veri seti oluşturmanızı sağlar.**
 
-## 🌟 Özellikler
+Bu proje, özellikle "zorlu" veri setlerini (uzak mesafe, hızlı hareket, bulanık görüntü vb.) toplamak için geliştirilmiştir. Varsayılan olarak **Sabit Kanatlı İHA (Fixed-Wing UAV)** tespiti için ayarlanmıştır ancak *tek bir satır kod değişikliği ile* **Araba, İnsan, Hayvan** veya **YOLO'nun tanıdığı herhangi bir nesne** için veri seti oluşturabilir.
 
-*   **Otomatik İndirme:** `yt-dlp` entegrasyonu ile yüksek kaliteli video indirme.
-*   **Akıllı Kare Ayıklama:**
-    *   **Bulanıklık Tespiti:** Net olmayan kareleri otomatik eler.
-    *   **Benzerlik Kontrolü:** Tekrar eden sahneleri atlar.
-    *   **AI Destekli Mesafe Filtresi (YOLOv8):** İHA'nın kameraya çok yakın olduğu (etiketleme için uygun olmayan) anları otomatik tespit eder ve eler. Sadece uzaktaki, tespit edilmesi zor hedefleri seçer.
+---
 
-## 🛠️ Kurulum
+## 🌟 Neden Bu Araç?
+
+Geleneksel "kare ayıklama" (frame extraction) yöntemleri videodaki her kareyi alır. Bu da veri setini birbirinin aynısı binlerce "çöp" görselle doldurur.
+Bu araç ise **YOLOv8** yapay zekasını kullanarak şunları yapar:
+
+1.  **Akıllı Seçim:** Sadece içinde **hedef nesnenin (örn: İHA)** olduğu kareleri kaydeder. Boş kareleri atar.
+2.  **Mesafe/Boyut Filtresi:** Nesnenin karede kapladığı alana göre (çok uzak, çok yakın) filtreleme yapar.
+3.  **Benzerlik Kontrolü:** Arka arkaya gelen *neredeyse aynı* kareleri kaydetmez. Çeşitliliği artırır.
+4.  **Kalite Odaklı:** Bulanık veya net olmayan görüntüleri isteğe bağlı eler veya (zorlu eğitim için) tutar.
+
+---
+
+## � Kurulum
 
 1.  Repoyu klonlayın:
     ```bash
@@ -18,46 +26,79 @@ Bu proje, açık kaynak videolardan (YouTube vb.) otomatik olarak **Sabit Kanatl
     cd sabit-kanat-veri-seti
     ```
 
-2.  Sanal ortam oluşturun ve paketleri yükleyin:
+2.  Gerekli paketleri yükleyin:
     ```bash
-    python -m venv myenv
-    # Windows:
-    .\myenv\Scripts\activate
-    # Linux/Mac:
-    source myenv/bin/activate
-    
     pip install -r scripts/requirements.txt
+    pip install ultralytics yt-dlp selectivesearch
     ```
 
-3.  YOLOv8 Kurulumu:
-    ```bash
-    pip install ultralytics
-    ```
+---
 
-## 🚀 Kullanım
+## �️ Kullanım Kılavuzu
 
-1.  **Video İndirme:**
-    İstediğiniz videoları `videos/` klasörüne atın veya `yt-dlp` ile indirin.
+### Adım 1: Videoları İndirme (Otomatik)
 
-2.  **Kare Ayıklama (Advanced Mod):**
-    ```bash
-    python scripts/frame_extractor_advanced.py
-    ```
-    Bu komut videoları tarayacak ve:
-    *   ✅ `sabit_kanatli_iha_dataset/`: Temiz veri seti.
-    *   ❌ `sabit_kanatli_iha_dataset_rejected/`: Reddedilen (çok yakın/bulanık) kareler.
-    *   👁️ `sabit_kanatli_iha_dataset_visualized/`: Yapay zekanın ne gördüğünü gösteren örnekler.
+YouTube'dan video toplamak için `video_downloader.py` scriptini kullanabilirsiniz.
+`videos/urls.txt` dosyasına indirmek istediğiniz linkleri veya arama terimlerini yazın:
+
+```text
+# videos/urls.txt dosyası örneği:
+https://www.youtube.com/watch?v=ornek_video_linki
+ytsearch5:fixed wing uav chase fpv  # En alakalı 5 videoyu bulup indirir
+```
+
+İndirmeyi başlatın:
+```bash
+python scripts/video_downloader.py
+```
+
+### Adım 2: Kareleri Ayıklama (Dataset Oluşturma)
+
+İndirilen videolardan veri seti oluşturmak için:
+```bash
+python scripts/frame_extractor_advanced.py
+```
+
+Bu işlem sonucunda şu klasörler oluşur:
+*   `dataset/` (veya proje adıyla): Eğitim için seçilen tertemiz kareler.
+*   `*_visualized/`: Yapay zekanın ne gördüğünü (kutu içine alarak) gösteren örnekler.
+*   `*_rejected/`: Filtrelere takılıp elenen kareler (Neden elendiğini anlamak için).
+
+---
+
+## ⚙️ Özelleştirme (Başka Nesneler İçin)
+
+Bu projeyi **Araba**, **İnsan** veya başka bir nesne için kullanmak istiyorsanız:
+
+1.  `scripts/frame_extractor_advanced.py` dosyasını açın.
+2.  `detect_aircraft` fonksiyonundaki `class_id` listesini değiştirin.
+
+```python
+# Örnek: Sadece İNSAN (Person) tespiti için
+# COCO Sınıfı: 0=person
+if class_id in [0] and confidence > 0.3:
+```
+
+*Not: YOLOv8 COCO sınıf listesine [buradan](https://docs.ultralytics.com/datasets/detect/coco/#dataset-structure) bakabilirsiniz.*
+
+---
 
 ## 📂 Proje Yapısı
 
-*   `scripts/`: Python scriptleri (extractor, downloader vb.)
-*   `videos/`: Ham videolar (Git tarafından yoksayılır)
-*   `*_dataset/`: Çıktı klasörleri (Git tarafından yoksayılır)
+*   `scripts/`:
+    *   `video_downloader.py`: YouTube video indirici.
+    *   `frame_extractor_advanced.py`: Ana yapay zeka scripti.
+*   `videos/`: İndirilen ham videolar (Git'e dahil edilmez).
+*   `dataset/`: Oluşturulan veri seti (Git'e dahil edilmez).
+
+---
 
 ## 🤝 Katkıda Bulunma
 
-Pull requestler kabul edilir. Büyük değişiklikler için önce tartışma başlatınız.
+Bu proje Teknofest ve benzeri yarışmalar için açık kaynak olarak geliştirilmiştir. Pull request'leriniz ve geliştirme önerileriniz memnuniyetle karşılanır.
+
+---
 
 ## 📄 Lisans
 
-MIT
+MIT License ile lisanslanmıştır. Özgürce kullanabilir, değiştirebilir ve dağıtabilirsiniz.
