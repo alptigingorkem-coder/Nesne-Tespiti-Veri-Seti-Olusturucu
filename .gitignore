@@ -8,6 +8,7 @@ venv/
 
 # Videolar ve Data
 videos/
+!videos/urls.txt
 sabit_kanatli_iha_dataset*/
 final_dataset/
 manuel_ayiklama/

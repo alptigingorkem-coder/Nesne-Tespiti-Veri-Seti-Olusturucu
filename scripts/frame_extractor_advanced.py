@@ -13,7 +13,7 @@ except ImportError:
 class AdvancedVideoFrameExtractor:
     def __init__(self, output_dir="dataset", mode="distance_filter"):
         """
-        Gelişmiş video kare çıkarıcı - AI destekli mesafe filtresi
+        Gelişmiş video kare çıkarıcı - AI destekli mesafe filtresi (Teknofest Optimize)
         
         Args:
             output_dir: Karelerin kaydedileceği klasör
@@ -67,12 +67,13 @@ class AdvancedVideoFrameExtractor:
             boxes = result.boxes
             for box in boxes:
                 # Sadece uçak/kuş/uçurtma gibi sınıfları al
-                # COCO dataset: 4=airplane, 14=bird, 32=sports ball (drone benzeri)
+                # CoCO dataset: 4=airplane, 14=bird, 32=sports ball, 33=kite (drone benzeri)
                 class_id = int(box.cls[0])
                 confidence = float(box.conf[0])
                 
-                # İlgili sınıflar (uçak, kuş vb.)
-                if class_id in [4, 14, 32] and confidence > 0.3:
+                # İlgili sınıflar (uçak, kuş vb.) - KITE (33) eklendi
+                # Güven eşiği Teknofest için 0.15'e düşürüldü (uzak hedefler için)
+                if class_id in [4, 14, 32, 33] and confidence > 0.15:
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                     detections.append({
                         'bbox': (int(x1), int(y1), int(x2), int(y2)),
@@ -103,18 +104,43 @@ class AdvancedVideoFrameExtractor:
         coverage_percent = (bbox_area / frame_area) * 100
         
         # Kategorilendirme
-        if coverage_percent < 5:  # %5'ten az
+        # Kategorilendirme (Teknofest için revize edildi)
+        if coverage_percent < 5:  # %5'ten az (Çok Uzak)
             category = "far"
             self.stats['distance_far'] += 1
-        elif coverage_percent < 15:  # %5-15 arası
+        elif coverage_percent < 20:  # %5-20 arası (Orta - Kilitlenme Menzili)
             category = "medium"
             self.stats['distance_medium'] += 1
-        else:  # %15'ten fazla
+        else:  # %20'den fazla
             category = "close"
             self.stats['distance_close'] += 1
         
         return category, coverage_percent
     
+    
+    def check_similarity(self, frame, prev_frames, threshold=0.92):
+        """
+        Önceki karelerle histogram benzerliğini kontrol et.
+        Çok benzerse True döner.
+        """
+        if not prev_frames:
+            return False
+            
+        # Sadece son kaydedilen kareye bakmak yeterli olabilir, ama son 3 kareye bakalım
+        curr_hist = cv2.calcHist([frame], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+        curr_hist = cv2.normalize(curr_hist, curr_hist).flatten()
+        
+        for prev_frame in prev_frames[-1:]: # Sadece son kareye bak (performans için)
+            prev_hist = cv2.calcHist([prev_frame], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+            prev_hist = cv2.normalize(prev_hist, prev_hist).flatten()
+            
+            similarity = cv2.compareHist(curr_hist, prev_hist, cv2.HISTCMP_CORREL)
+            
+            if similarity > threshold:
+                return True # Çok benzer
+                
+        return False
+
     def draw_detection(self, frame, detections, categories):
         """Tespit edilen nesneleri çiz (görselleştirme için)"""
         vis_frame = frame.copy()
@@ -195,8 +221,11 @@ class AdvancedVideoFrameExtractor:
             
             return False, None
         
-        # Benzerlik kontrolü (opsiyonel)
-        # ... (gerekirse ekleriz)
+        # Benzerlik kontrolü (Teknofest Optimize)
+        if self.check_similarity(frame, prev_frames):
+            self.stats['skipped_similar'] += 1
+            # Benzer olduğu için atla, ama reject etme (çok dosya olur)
+            return False, None
         
         # Görselleştirme
         vis_frame = None
@@ -237,7 +266,9 @@ class AdvancedVideoFrameExtractor:
         print(f"   İşleniyor...")
         
         frame_count = 0
+        frame_count = 0
         saved_count = 0
+        # Önceki kareleri tutmak için liste (son 5 kare yeterli)
         prev_frames = []
         
         # Parametreler
@@ -285,6 +316,11 @@ class AdvancedVideoFrameExtractor:
                 
                 saved_count += 1
                 self.stats['saved_frames'] += 1
+                
+                # Başarılı kareyi hafızaya al (benzerlik kontrolü için)
+                prev_frames.append(frame)
+                if len(prev_frames) > 5:
+                    prev_frames.pop(0)
                 
                 # Görselleştirme kaydet
                 if detection_info and detection_info.get('visualization') is not None:
@@ -384,8 +420,9 @@ if __name__ == "__main__":
         video_dir="videos",
         
         # Mesafe ayarları
-        max_coverage_percent=5,      # İHA karede max %5 yer kaplasın (SADECE ÇOK UZAK)
-                                     # Daha uzak: 3%, Daha yakın: 10-15%
+        # Mesafe ayarları (Teknofest Optimize)
+        max_coverage_percent=20,     # İHA karede max %20 yer kaplasın (Kilitlenme menzili dahil)
+                                     # Daha uzak: 3-5%, Kilitlenme: 10-20%
         
         # Zaman ayarları (performans için)
         interval_seconds=0.5,        # Her 0.5 saniyede bir kontrol et
